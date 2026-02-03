@@ -307,7 +307,7 @@ Please analyze the file provided. If the content is a PDF with multiple pages, c
         throw new Error(`Failed to process bill with Gemini: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
       }
     }
-
+ 
     // If we exhausted all retries
     throw new Error(`Failed after ${this.maxRetries} retries: ${lastError instanceof Error ? lastError.message : JSON.stringify(lastError)}`);
   }

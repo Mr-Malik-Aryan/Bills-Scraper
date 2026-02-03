@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { FolderOpen, Play, Square, Download, FileText, X } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { FolderOpen, Play, Square, Download, FileText, X, Pencil, Save, Receipt, FolderSearch, FileQuestion, Loader2, Trash2, Maximize2, Minimize2 } from 'lucide-react';
 
 interface FileMetadata {
   id: string;
@@ -42,6 +43,9 @@ export default function Home() {
     currency: true,
     receipt: true,
   });
+  const [editingBill, setEditingBill] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Partial<BillData>>({});
+  const [isMaximized, setIsMaximized] = useState(false);
 
   const handleScanFolder = async () => {
     setScanning(true);
@@ -151,12 +155,26 @@ export default function Home() {
     }
   };
 
-  const handleEdit = (id: string, field: keyof BillData, value: string | number) => {
-    setBills((prev) =>
-      prev.map((bill) =>
-        bill.id === id ? { ...bill, [field]: value } : bill
-      )
-    );
+  const handleStartEdit = (bill: BillData) => {
+    setEditingBill(bill.id);
+    setEditValues(bill);
+  };
+
+  const handleSaveEdit = () => {
+    if (editingBill && editValues) {
+      setBills((prev) =>
+        prev.map((bill) =>
+          bill.id === editingBill ? { ...bill, ...editValues } : bill
+        )
+      );
+      setEditingBill(null);
+      setEditValues({});
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingBill(null);
+    setEditValues({});
   };
 
   const handleDelete = (id: string) => {
@@ -192,330 +210,425 @@ export default function Home() {
   const totalAmount = bills.reduce((sum, bill) => sum + (Number(bill.amount) || 0), 0);
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-gray-50 to-blue-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto space-y-8">
-
-        {/* Header */}
-        <div className="text-center space-y-4">
-          <h1 className="text-5xl font-bold text-gray-900 tracking-tight">
-            Bill Reimbursement Scraper
-          </h1>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Automated bill extraction powered by Gemini AI
-          </p>
+    <div className="min-h-screen bg-background p-4 md:p-6 relative">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Bill Scraper</h1>
+          <p className="text-muted-foreground">AI-powered expense extraction</p>
         </div>
+        <ThemeToggle />
+      </div>
 
-        {/* Input Card */}
-        <div className="bg-white rounded-xl shadow-lg p-8 border border-gray-100">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Google Drive Folder Link
-          </label>
-          <div className="flex gap-4 mb-4">
-            <input
-              type="text"
-              value={folderLink}
-              onChange={(e) => setFolderLink(e.target.value)}
-              placeholder="https://drive.google.com/drive/folders/..."
-              className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all"
-            />
-          </div>
-
-          {/* Date Range Filters */}
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                From Uploaded at Date (Optional)
-              </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                To Date (Optional)
-              </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all"
-              />
-            </div>
-          </div>
-
-          <button
-            onClick={handleScanFolder}
-            disabled={loading || scanning || !folderLink}
-            className="w-full px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shadow-lg shadow-blue-600/20"
-          >
-            {scanning ? 'Scanning Folder...' : 'Scan Folder'}
-          </button>
-
-          {/* Progress Bar */}
-          {loading && (
-            <div className="mt-6 space-y-2">
-              <div className="flex justify-between items-center text-sm font-medium text-gray-600">
-                <span>{progress.message}</span>
-                <div className="flex items-center gap-3">
-                  <span>{progress.current} / {progress.total}</span>
-                  <button
-                    onClick={() => {
-                      setShouldStop(true);
-                      stopRef.current = true;
-                    }}
-                    disabled={shouldStop}
-                    className="px-3 py-1 bg-red-500 text-white text-xs font-semibold rounded hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {shouldStop ? 'Stopping...' : 'Stop'}
-                  </button>
-                </div>
-              </div>
-              {progress.step && (
-                <div className="text-xs text-gray-500">
-                  Step: {progress.step === 'downloading' ? '⬇️ Downloading' : progress.step === 'completed' ? '✅ Completed' : '🔄 Starting'}
-                </div>
-              )}
-              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                <div
-                  className="bg-blue-600 h-3 rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${progress.total ? (progress.current / progress.total) * 100 : 0}%` }}
+      {/* Bento Grid Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        
+        {/* Left Column - Input & Files */}
+        <div className="lg:col-span-3 space-y-4">
+          
+          {/* Folder Input */}
+          <Card className="h-fit">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FolderOpen className="h-5 w-5" />
+                Folder Scan
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <Label htmlFor="folder">Drive Folder Link</Label>
+                <Input 
+                  id="folder"
+                  value={folderLink}
+                  onChange={(e) => setFolderLink(e.target.value)}
+                  placeholder="https://drive.google.com/drive/folders/..."
+                  className="mt-1"
                 />
               </div>
-            </div>
-          )}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label htmlFor="start">From Date</Label>
+                  <Input 
+                    id="start"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="end">To Date</Label>
+                  <Input 
+                    id="end"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+              <Button 
+                onClick={handleScanFolder}
+                disabled={loading || scanning || !folderLink}
+                className="w-full"
+              >
+                {scanning ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Scanning...
+                  </>
+                ) : (
+                  <>
+                    <FolderSearch className="h-4 w-4 mr-2" />
+                    Scan Folder
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Files Preview */}
+          <Card className="h-[calc(100vh-420px)]">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Files {scannedFiles.length > 0 && `(${selectedFileIds.size}/${scannedFiles.length})`}</CardTitle>
+                {scannedFiles.length > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => {
+                      if (selectedFileIds.size === scannedFiles.length) {
+                        setSelectedFileIds(new Set());
+                      } else {
+                        setSelectedFileIds(new Set(scannedFiles.map(f => f.id)));
+                      }
+                    }}
+                  >
+                    {selectedFileIds.size === scannedFiles.length ? 'Deselect' : 'Select All'}
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="h-[calc(100%-140px)] overflow-auto">
+              {scannedFiles.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+                  <FileQuestion className="h-16 w-16 mb-4 opacity-20" />
+                  <p className="text-sm text-center">No files scanned yet</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {scannedFiles.map((file) => (
+                    <div key={file.id} className="flex items-start gap-2 p-2 rounded-lg border hover:bg-accent transition-colors">
+                      <Checkbox
+                        checked={selectedFileIds.has(file.id)}
+                        onCheckedChange={(checked) => {
+                          const newSelected = new Set(selectedFileIds);
+                          if (checked) {
+                            newSelected.add(file.id);
+                          } else {
+                            newSelected.delete(file.id);
+                          }
+                          setSelectedFileIds(newSelected);
+                        }}
+                        className="mt-1"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{file.name}</p>
+                        {file.createdTime && (
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(file.createdTime).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+            {scannedFiles.length > 0 && (
+              <div className="p-4 border-t">
+                <Button 
+                  onClick={handleProcessFiles}
+                  disabled={loading || selectedFileIds.size === 0}
+                  className="w-full"
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Process {selectedFileIds.size} File{selectedFileIds.size !== 1 ? 's' : ''}
+                </Button>
+              </div>
+            )}
+          </Card>
         </div>
 
-        {/* File Preview */}
-        {scannedFiles.length > 0 && !loading && (
-          <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Found {scannedFiles.length} file{scannedFiles.length !== 1 ? 's' : ''} ({selectedFileIds.size} selected)
-              </h3>
-              <button
-                onClick={() => {
-                  if (selectedFileIds.size === scannedFiles.length) {
-                    setSelectedFileIds(new Set());
-                  } else {
-                    setSelectedFileIds(new Set(scannedFiles.map(f => f.id)));
-                  }
-                }}
-                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-              >
-                {selectedFileIds.size === scannedFiles.length ? 'Deselect All' : 'Select All'}
-              </button>
-            </div>
-            <div className="max-h-60 overflow-y-auto mb-4 space-y-2">
-              {scannedFiles.map((file) => (
-                <div key={file.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                  <input
-                    type="checkbox"
-                    checked={selectedFileIds.has(file.id)}
-                    onChange={(e) => {
-                      const newSelected = new Set(selectedFileIds);
-                      if (e.target.checked) {
-                        newSelected.add(file.id);
-                      } else {
-                        newSelected.delete(file.id);
-                      }
-                      setSelectedFileIds(newSelected);
-                    }}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+        {/* Middle & Right Column - Progress & Bills Table */}
+        <div className="lg:col-span-9 space-y-4">
+          
+          {/* Progress */}
+          {loading && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Processing
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span>{progress.message}</span>
+                  <span className="font-medium">{progress.current}/{progress.total}</span>
+                </div>
+                <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-primary transition-all duration-300"
+                    style={{ width: `${progress.total ? (progress.current / progress.total) * 100 : 0}%` }}
                   />
-                  <div className="flex-1 flex items-center justify-between">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                      {file.createdTime && (
-                        <p className="text-xs text-gray-500">
-                          Created: {new Date(file.createdTime).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
-                    <span className="text-xs text-gray-500 uppercase">{file.mimeType.split('/')[1]}</span>
-                  </div>
                 </div>
-              ))}
-            </div>
-            <button
-              onClick={handleProcessFiles}
-              disabled={loading || selectedFileIds.size === 0}
-              className="w-full px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shadow-lg shadow-green-600/20"
-            >
-              Process {selectedFileIds.size} File{selectedFileIds.size !== 1 ? 's' : ''}
-            </button>
-          </div>
-        )}
+                <Button 
+                  variant="destructive" 
+                  size="icon"
+                  onClick={() => {
+                    setShouldStop(true);
+                    stopRef.current = true;
+                  }}
+                  disabled={shouldStop}
+                  className="h-8 w-8"
+                >
+                  <Square className="h-4 w-4" />
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
-            <div className="flex">
-              <div className="shrink-0">
-                <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-red-700">{error}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Success Summary */}
-        {bills.length > 0 && !loading && (
-          <>
-            <div className="bg-green-50 border-l-4 border-green-500 p-6 rounded-r-lg shadow-sm">
-              <div className="flex justify-between items-center mb-4">
+          {/* Export Settings */}
+          {!isMaximized && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Export Settings
+                </CardTitle>
+              </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <h3 className="text-lg font-medium text-green-800">Processing Complete!</h3>
-                  <p className="text-sm text-green-700 mt-1">
-                    Successfully extracted data from {bills.length} bills. Total Value: ₹{totalAmount.toFixed(2)}
-                  </p>
-                </div>
-              </div>
-
-              {/* Excel Column Toggles */}
-              <div className="bg-white rounded-lg p-4 mb-4 border border-green-200">
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">Excel Export Settings:</h4>
-                
-                {/* Filename Input */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    File Name
-                  </label>
-                  <input
-                    type="text"
+                  <Label htmlFor="filename">File Name</Label>
+                  <Input 
+                    id="filename"
                     value={excelFileName}
                     onChange={(e) => setExcelFileName(e.target.value)}
                     placeholder="bills"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-500/20 outline-none transition-all text-sm"
+                    className="mt-1"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Will be saved as: {excelFileName.trim() || 'bills'}-{new Date().toISOString().split('T')[0]}.xlsx
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {excelFileName.trim() || 'bills'}-{new Date().toISOString().split('T')[0]}.xlsx
                   </p>
                 </div>
 
-                {/* Column Toggles */}
-                <h5 className="text-sm font-medium text-gray-700 mb-2">Columns to Include:</h5>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {Object.entries(excelColumns).map(([key, value]) => (
-                    <label key={key} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={value}
-                        onChange={(e) => setExcelColumns(prev => ({ ...prev, [key]: e.target.checked }))}
-                        className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
-                      />
-                      <span className="text-sm text-gray-700 capitalize">{key.replace('_', ' ')}</span>
-                    </label>
-                  ))}
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Columns to Export</Label>
+                  <div className="flex flex-wrap gap-3 mt-1">
+                    {Object.entries(excelColumns).map(([key, value]) => (
+                      <div key={key} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={key}
+                          checked={value}
+                          onCheckedChange={(checked) => 
+                            setExcelColumns(prev => ({ ...prev, [key]: !!checked }))
+                          }
+                        />
+                        <label
+                          htmlFor={key}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 capitalize cursor-pointer"
+                        >
+                          {key.replace('_', ' ')}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-
-              <button
-                onClick={handleExport}
-                className="w-full px-6 py-2.5 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors shadow-lg shadow-green-600/20 flex items-center justify-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Export to Excel
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* Data Table */}
-        {bills.length > 0 && (
-          <Card className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Category</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Vendor</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
-                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {[...bills].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map((bill) => (
-                    <tr key={bill.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <input
-                          type="date"
-                          value={bill.date}
-                          onChange={(e) => handleEdit(bill.id, 'date', e.target.value)}
-                          className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm text-gray-900"
-                        />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <select
-                          value={bill.category}
-                          onChange={(e) => handleEdit(bill.id, 'category', e.target.value)}
-                          className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm text-gray-900"
-                        >
-                          <option value="food">Food</option>
-                          <option value="travel">Travel</option>
-                          <option value="office_supplies">Office Supplies</option>
-                          <option value="software">Software</option>
-                          <option value="entertainment">Entertainment</option>
-                          <option value="other">Other</option>
-                        </select>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <input
-                          type="text"
-                          value={bill.vendor}
-                          onChange={(e) => handleEdit(bill.id, 'vendor', e.target.value)}
-                          className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm text-gray-900"
-                        />
-                      </td>
-                      <td className="px-6 py-4">
-                        <input
-                          type="text"
-                          value={bill.description}
-                          onChange={(e) => handleEdit(bill.id, 'description', e.target.value)}
-                          className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm text-gray-900"
-                        />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-500 text-sm">{bill.currency}</span>
-                          <input
-                            type="number"
-                            value={bill.amount}
-                            onChange={(e) => handleEdit(bill.id, 'amount', parseFloat(e.target.value))}
-                            className="w-24 bg-transparent border-none focus:ring-0 p-0 text-sm text-gray-900 font-medium"
-                          />
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => handleDelete(bill.id)}
-                          className="text-red-600 hover:text-red-900 transition-colors"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {/* Total Row */}
-                  <tr className="bg-gray-50 font-bold">
-                    <td colSpan={4} className="px-6 py-4 text-right text-gray-900">Total:</td>
-                    <td className="px-6 py-4 text-gray-900">₹{totalAmount.toFixed(2)}</td>
-                    <td></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            </CardContent>
           </Card>
+          )}
+
+          {/* Bills Table */}
+          <Card className={isMaximized ? 'fixed inset-4 z-50 bg-background' : 'h-[400px]'}>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg">Extracted Bills {bills.length > 0 && `(${bills.length})`}</CardTitle>
+                  {bills.length > 0 && (
+                    <CardDescription>Total: ₹{totalAmount.toFixed(2)}</CardDescription>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setIsMaximized(!isMaximized)}
+                    className="h-8 w-8"
+                  >
+                    {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                  </Button>
+                  {bills.length > 0 && (
+                    <Button 
+                      onClick={handleExport}
+                      size="sm"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export to Excel
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className={`overflow-auto ${isMaximized ? 'h-[calc(100%-80px)]' : 'h-[calc(100%-80px)]'}`}>
+              {bills.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+                  <Receipt className="h-20 w-20 mb-4 opacity-20" />
+                  <p className="text-sm text-center">No bills extracted yet</p>
+                  <p className="text-xs text-center mt-1">Process files to see extracted data here</p>
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[100px]">Date</TableHead>
+                        <TableHead>Vendor</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="w-[100px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {[...bills].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map((bill) => (
+                        <TableRow key={bill.id}>
+                          <TableCell>
+                            {editingBill === bill.id ? (
+                              <Input
+                                type="date"
+                                value={editValues.date || ''}
+                                onChange={(e) => setEditValues({ ...editValues, date: e.target.value })}
+                                className="h-8"
+                              />
+                            ) : (
+                              <span className="text-sm">{bill.date}</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editingBill === bill.id ? (
+                              <Input
+                                value={editValues.vendor || ''}
+                                onChange={(e) => setEditValues({ ...editValues, vendor: e.target.value })}
+                                className="h-8"
+                              />
+                            ) : (
+                              <span className="font-medium">{bill.vendor}</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editingBill === bill.id ? (
+                              <Input
+                                value={editValues.category || ''}
+                                onChange={(e) => setEditValues({ ...editValues, category: e.target.value })}
+                                className="h-8"
+                              />
+                            ) : (
+                              <span className="capitalize">{bill.category.replace('_', ' ')}</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editingBill === bill.id ? (
+                              <Input
+                                value={editValues.description || ''}
+                                onChange={(e) => setEditValues({ ...editValues, description: e.target.value })}
+                                className="h-8"
+                              />
+                            ) : (
+                              <span className="text-sm text-muted-foreground">{bill.description}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {editingBill === bill.id ? (
+                              <div className="flex gap-1">
+                                <Input
+                                  value={editValues.currency || ''}
+                                  onChange={(e) => setEditValues({ ...editValues, currency: e.target.value })}
+                                  className="h-8 w-16"
+                                  placeholder="INR"
+                                />
+                                <Input
+                                  type="number"
+                                  value={editValues.amount || ''}
+                                  onChange={(e) => setEditValues({ ...editValues, amount: Number(e.target.value) })}
+                                  className="h-8 w-24"
+                                />
+                              </div>
+                            ) : (
+                              <span className="font-medium">{bill.currency} {bill.amount}</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              {editingBill === bill.id ? (
+                                <>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={handleSaveEdit}
+                                  >
+                                    <Save className="h-4 w-4 text-green-600" />
+                                  </Button>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={handleCancelEdit}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              ) : (
+                                <>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => handleStartEdit(bill)}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => handleDelete(bill.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {error && (
+            <Card className="border-destructive">
+              <CardContent className="pt-6">
+                <p className="text-sm text-destructive">{error}</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
