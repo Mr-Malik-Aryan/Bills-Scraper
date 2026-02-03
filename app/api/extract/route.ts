@@ -1,9 +1,9 @@
 import { BillProcessor } from '@/lib/bill-processor';
 
 export const runtime = 'nodejs';
-// Vercel limits: Free tier = 10s, Hobby/Pro = 60s, Enterprise = 300s
-// Set to 60s for Pro tier - adjust to 10 if using free tier
-export const maxDuration = 60;
+// Vercel limits: Hobby = 10s, Pro = 60s, Enterprise = 300s
+// Currently configured for Hobby tier
+export const maxDuration = 10;
 
 // Process files in parallel with concurrency limit
 async function processWithConcurrency<T, R>(
@@ -62,10 +62,11 @@ export async function POST(request: Request) {
                     return true;
                 });
 
-                // Process files with concurrency limit of 3
+                // Process 1 file at a time for Hobby tier (10s limit)
+                // Upgrade to Pro for parallel processing (concurrency: 3)
                 await processWithConcurrency(
                     uniqueLinks,
-                    3, // Process 3 files in parallel
+                    1, // Process 1 file at a time on Hobby tier
                     async (link: string, index: number) => {
                         const fileId = processor.extractFileId(link);
                         
@@ -80,9 +81,9 @@ export async function POST(request: Request) {
                                 fileId,
                             });
 
-                            // Extract data with timeout
+                            // Extract data with timeout (8s to stay under 10s function limit)
                             const timeoutPromise = new Promise((_, reject) => 
-                                setTimeout(() => reject(new Error('Processing timeout (45s)')), 45000)
+                                setTimeout(() => reject(new Error('Processing timeout (8s)')), 8000)
                             );
                             
                             const billData = await Promise.race([

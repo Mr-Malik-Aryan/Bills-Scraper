@@ -102,10 +102,35 @@ export default function Home() {
     setProgress({ current: 0, total: fileLinks.length, message: 'Starting...', step: '' });
 
     try {
+      // Process in chunks of 1 file for Hobby tier (10s timeout)
+      // Change to 5-10 files per chunk if on Pro tier
+      const CHUNK_SIZE = 1;
+      let processedCount = 0;
+
+      for (let i = 0; i < fileLinks.length; i += CHUNK_SIZE) {
+        if (stopRef.current) break;
+
+        const chunk = fileLinks.slice(i, Math.min(i + CHUNK_SIZE, fileLinks.length));
+        
+        await processChunk(chunk, processedCount, fileLinks.length);
+        processedCount += chunk.length;
+      }
+    } catch (err: unknown) {
+      console.error('Extraction error:', err);
+      setError('An error occurred while processing bills.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const processChunk = async (chunkLinks: string[], offset: number, total: number) => {
+
+  const processChunk = async (chunkLinks: string[], offset: number, total: number) => {
+    try {
       const response = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ driveLinks: fileLinks }),
+        body: JSON.stringify({ driveLinks: chunkLinks }),
       });
 
       if (!response.body) return;
@@ -132,8 +157,8 @@ export default function Home() {
 
               if (event.type === 'progress') {
                 setProgress({ 
-                  current: event.current, 
-                  total: event.total,
+                  current: offset + event.current, 
+                  total: total,
                   message: event.message || 'Processing...',
                   step: event.step || '',
                 });
@@ -152,10 +177,14 @@ export default function Home() {
         }
       }
     } catch (err: unknown) {
-      console.error('Extraction error:', err);
-      setError('An error occurred while processing bills.');
-    } finally {
-      setLoading(false);
+      console.error('Chunk processing error:', err);
+      // Mark all files in this chunk as failed
+      chunkLinks.forEach(link => {
+        setFailedFiles((prev) => [...prev, { 
+          link, 
+          message: err instanceof Error ? err.message : 'Chunk processing failed' 
+        }]);
+      });
     }
   };
 
