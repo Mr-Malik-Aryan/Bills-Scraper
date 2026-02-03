@@ -1,7 +1,38 @@
 import { BillProcessor } from '@/lib/bill-processor';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+// Vercel limits: Hobby = 10s, Pro = 60s, Enterprise = 300s
+// Currently configured for Hobby tier
+export const maxDuration = 10;
+
+// Process files in parallel with concurrency limit
+async function processWithConcurrency<T, R>(
+    items: T[],
+    concurrency: number,
+    processor: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+    const results: R[] = [];
+    const executing: Promise<void>[] = [];
+
+    for (let i = 0; i < items.length; i++) {
+        const promise = processor(items[i], i).then((result) => {
+            results[i] = result;
+        });
+
+        executing.push(promise);
+
+        if (executing.length >= concurrency) {
+            await Promise.race(executing);
+            executing.splice(
+                executing.findIndex((p) => p === promise),
+                1
+            );
+        }
+    }
+
+    await Promise.all(executing);
+    return results;
+}
 
 export async function POST(request: Request) {
     const { driveLinks } = await request.json();
@@ -12,89 +43,96 @@ export async function POST(request: Request) {
         async start(controller) {
             const processor = new BillProcessor();
             const processedIds = new Set<string>();
+            let completedCount = 0;
+
+            // Helper to send events and flush immediately
+            const sendEvent = (event: any) => {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+            };
 
             try {
-                for (let i = 0; i < driveLinks.length; i++) {
-                    const link = driveLinks[i];
-                    
-                    // Extract file ID and check for duplicates
+                // Filter duplicates upfront
+                const uniqueLinks = driveLinks.filter((link: string) => {
                     const fileId = processor.extractFileId(link);
-                    if (fileId && processedIds.has(fileId)) {
+                    if (!fileId || processedIds.has(fileId)) {
                         console.log(`Skipping duplicate file: ${fileId}`);
-                        continue;
+                        return false;
                     }
-                    if (fileId) {
-                        processedIds.add(fileId);
+                    processedIds.add(fileId);
+                    return true;
+                });
+
+                // Process 1 file at a time for Hobby tier (10s limit)
+                // Upgrade to Pro for parallel processing (concurrency: 3)
+                await processWithConcurrency(
+                    uniqueLinks,
+                    1, // Process 1 file at a time on Hobby tier
+                    async (link: string, index: number) => {
+                        const fileId = processor.extractFileId(link);
+                        
+                        try {
+                            // Send starting event
+                            sendEvent({
+                                type: 'progress',
+                                current: index + 1,
+                                total: uniqueLinks.length,
+                                message: `Processing bill ${index + 1}/${uniqueLinks.length}...`,
+                                step: 'starting',
+                                fileId,
+                            });
+
+                            // Extract data with timeout (8s to stay under 10s function limit)
+                            const timeoutPromise = new Promise((_, reject) => 
+                                setTimeout(() => reject(new Error('Processing timeout (8s)')), 8000)
+                            );
+                            
+                            const billData = await Promise.race([
+                                processor.extractBillData(link),
+                                timeoutPromise
+                            ]) as any;
+
+                            completedCount++;
+
+                            // Send success events
+                            sendEvent({
+                                type: 'progress',
+                                current: completedCount,
+                                total: uniqueLinks.length,
+                                message: `Completed ${completedCount}/${uniqueLinks.length}`,
+                                step: 'completed',
+                                fileId,
+                            });
+
+                            sendEvent({
+                                type: 'bill',
+                                data: billData,
+                            });
+
+                            return billData;
+
+                        } catch (error: unknown) {
+                            console.error(`Error processing link ${link}:`, error);
+                            sendEvent({
+                                type: 'error',
+                                link,
+                                fileId,
+                                message: error instanceof Error ? error.message : 'Unknown processing error',
+                            });
+                            return null;
+                        }
                     }
-
-                    try {
-                        // Send progress update - starting
-                        const progressEvent = {
-                            type: 'progress',
-                            current: i + 1,
-                            total: driveLinks.length,
-                            message: `Processing bill ${i + 1}/${driveLinks.length}...`,
-                            step: 'starting',
-                            fileId,
-                        };
-                        controller.enqueue(encoder.encode(`data: ${JSON.stringify(progressEvent)}\n\n`));
-
-                        // Send download progress
-                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                            type: 'progress',
-                            current: i + 1,
-                            total: driveLinks.length,
-                            message: `Downloading bill ${i + 1}/${driveLinks.length}...`,
-                            step: 'downloading',
-                            fileId,
-                        })}\n\n`));
-
-                        // Extract data (this includes download + AI analysis)
-                        const billData = await processor.extractBillData(link);
-
-                        // Send analysis complete
-                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                            type: 'progress',
-                            current: i + 1,
-                            total: driveLinks.length,
-                            message: `Analyzed bill ${i + 1}/${driveLinks.length}`,
-                            step: 'completed',
-                            fileId,
-                        })}\n\n`));
-
-                        // Send bill data
-                        const billEvent = {
-                            type: 'bill',
-                            data: billData,
-                        };
-                        controller.enqueue(encoder.encode(`data: ${JSON.stringify(billEvent)}\n\n`));
-
-                        // Small delay to be nice to APIs
-                        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-                    } catch (error: unknown) {
-                        console.error(`Error processing link ${link}:`, error);
-                        const errorEvent = {
-                            type: 'error',
-                            link,
-                            message: error instanceof Error ? error.message : 'Unknown processing error',
-                        };
-                        controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorEvent)}\n\n`));
-                    }
-                }
+                );
 
                 // Send complete event
-                const completeEvent = { type: 'complete' };
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(completeEvent)}\n\n`));
+                sendEvent({ type: 'complete' });
 
             } catch (error: unknown) {
                 console.error('Stream error:', error);
-                const fatalError = {
+                sendEvent({
                     type: 'error',
                     link: 'system',
                     message: error instanceof Error ? error.message : 'Fatal processing error',
-                };
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(fatalError)}\n\n`));
+                });
             } finally {
                 controller.close();
             }

@@ -1,0 +1,16 @@
+{
+  "functions": {
+    "app/api/extract/route.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    },
+    "app/api/export/route.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    },
+    "app/api/scan-folder/route.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  }
+}
