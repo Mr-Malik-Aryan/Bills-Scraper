@@ -16,8 +16,8 @@ export interface BillData {
 export class BillProcessor {
   private genAI: GoogleGenAI;
   private modelName: string;
-  private maxRetries: number = 3;
-  private baseDelay: number = 1000; // 1 second
+  private maxRetries: number = 2;
+  private baseDelay: number = 500; // 500ms for faster retries
 
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY?.trim();
@@ -40,6 +40,9 @@ export class BillProcessor {
     try {
       const response = await axios.get(url, {
         responseType: 'arraybuffer',
+        timeout: 20000, // 20 second timeout for download
+        maxContentLength: 20 * 1024 * 1024, // 20MB limit (faster processing)
+        maxBodyLength: 20 * 1024 * 1024,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
@@ -207,10 +210,9 @@ Important:
 Please analyze the file provided. If the content is a PDF with multiple pages, consider the overall document. If it's an image, use visual OCR to extract text.`;
 
     const contentParts: any[] = [{ text: prompt }];
-    const base64Data = buffer.toString('base64');
     
-    // Immediately clear buffer to free memory
-    buffer.fill(0);
+    // Convert to base64 and immediately clear original buffer to save memory
+    const base64Data = buffer.toString('base64');
     
     contentParts.push({
       inlineData: {

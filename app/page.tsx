@@ -33,6 +33,7 @@ export default function Home() {
   const stopRef = useRef(false);
   const [progress, setProgress] = useState({ current: 0, total: 0, message: '', step: '' });
   const [error, setError] = useState('');
+  const [failedFiles, setFailedFiles] = useState<{ link: string; message: string }[]>([]);
   const [excelFileName, setExcelFileName] = useState('bills');
   const [excelColumns, setExcelColumns] = useState({
     date: true,
@@ -46,6 +47,7 @@ export default function Home() {
   const [editingBill, setEditingBill] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<BillData>>({});
   const [isMaximized, setIsMaximized] = useState(false);
+  const [isFilesMaximized, setIsFilesMaximized] = useState(false);
 
   const handleScanFolder = async () => {
     setScanning(true);
@@ -96,6 +98,7 @@ export default function Home() {
     setShouldStop(false);
     stopRef.current = false;
     setBills([]);
+    setFailedFiles([]);
     setProgress({ current: 0, total: fileLinks.length, message: 'Starting...', step: '' });
 
     try {
@@ -138,6 +141,7 @@ export default function Home() {
                 setBills((prev) => [...prev, event.data]);
               } else if (event.type === 'error') {
                 console.error(`Error processing ${event.link}:`, event.message);
+                setFailedFiles((prev) => [...prev, { link: event.link, message: event.message }]);
               } else if (event.type === 'complete') {
                 console.log('Processing complete');
               }
@@ -288,28 +292,40 @@ export default function Home() {
           </Card>
 
           {/* Files Preview */}
-          <Card className="h-[calc(100vh-420px)]">
+          <Card className={isFilesMaximized ? 'fixed inset-4 z-50 bg-background transition-all duration-300' : 'h-[calc(100vh-420px)] transition-all duration-300'}>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg">Files {scannedFiles.length > 0 && `(${selectedFileIds.size}/${scannedFiles.length})`}</CardTitle>
-                {scannedFiles.length > 0 && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => {
-                      if (selectedFileIds.size === scannedFiles.length) {
-                        setSelectedFileIds(new Set());
-                      } else {
-                        setSelectedFileIds(new Set(scannedFiles.map(f => f.id)));
-                      }
-                    }}
-                  >
-                    {selectedFileIds.size === scannedFiles.length ? 'Deselect' : 'Select All'}
-                  </Button>
-                )}
+                <div className="flex items-center gap-2">
+                  {scannedFiles.length > 0 && (
+                    <Button 
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setIsFilesMaximized(!isFilesMaximized)}
+                      className="h-8 w-8"
+                    >
+                      {isFilesMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                    </Button>
+                  )}
+                  {scannedFiles.length > 0 && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => {
+                        if (selectedFileIds.size === scannedFiles.length) {
+                          setSelectedFileIds(new Set());
+                        } else {
+                          setSelectedFileIds(new Set(scannedFiles.map(f => f.id)));
+                        }
+                      }}
+                    >
+                      {selectedFileIds.size === scannedFiles.length ? 'Deselect All' : 'Select All'}
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardHeader>
-            <CardContent className="h-[calc(100%-140px)] overflow-auto">
+            <CardContent className={`overflow-auto transition-all duration-300 ${isFilesMaximized ? 'h-[calc(100%-80px)]' : 'h-[calc(100%-140px)]'}`}>
               {scannedFiles.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
                   <FileQuestion className="h-16 w-16 mb-4 opacity-20" />
@@ -452,7 +468,7 @@ export default function Home() {
           )}
 
           {/* Bills Table */}
-          <Card className={isMaximized ? 'fixed inset-4 z-50 bg-background' : 'h-[400px]'}>
+          <Card className={isMaximized ? 'fixed inset-4 z-50 bg-background transition-all duration-300' : 'h-[400px] transition-all duration-300'}>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -626,6 +642,40 @@ export default function Home() {
             <Card className="border-destructive">
               <CardContent className="pt-6">
                 <p className="text-sm text-destructive">{error}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {failedFiles.length > 0 && (
+            <Card className="border-yellow-500">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg text-yellow-600 flex items-center gap-2">
+                  <FileQuestion className="h-5 w-5" />
+                  Failed Files ({failedFiles.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-40 overflow-auto">
+                  {failedFiles.map((file, idx) => (
+                    <div key={idx} className="text-sm p-2 bg-yellow-50 dark:bg-yellow-950/20 rounded border border-yellow-200 dark:border-yellow-800">
+                      <p className="font-medium text-yellow-800 dark:text-yellow-400 truncate">{file.link}</p>
+                      <p className="text-yellow-600 dark:text-yellow-500 text-xs mt-1">{file.message}</p>
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-3"
+                  onClick={() => {
+                    const failedLinks = failedFiles.map(f => f.link);
+                    setFailedFiles([]);
+                    processFiles(failedLinks);
+                  }}
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Retry Failed Files
+                </Button>
               </CardContent>
             </Card>
           )}

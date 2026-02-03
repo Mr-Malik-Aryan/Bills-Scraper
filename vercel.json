@@ -1,0 +1,19 @@
+{
+  "functions": {
+    "app/api/extract/route.ts": {
+      "memory": 3008,
+      "maxDuration": 60
+    },
+    "app/api/export/route.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    },
+    "app/api/scan-folder/route.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  },
+  "env": {
+    "NODE_OPTIONS": "--max-old-space-size=3008"
+  }
+}
