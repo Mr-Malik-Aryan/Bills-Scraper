@@ -1,5 +1,14 @@
 import { google } from 'googleapis';
 
+export interface FileMetadata {
+    id: string;
+    name: string;
+    mimeType: string;
+    createdTime?: string;
+    modifiedTime?: string;
+    link: string;
+}
+
 export class DriveService {
     private drive;
     private apiKey: string;
@@ -32,17 +41,34 @@ export class DriveService {
         return null;
     }
 
-    async listFilesInFolder(folderId: string): Promise<string[]> {
+    async listFilesInFolder(folderId: string, startDate?: string, endDate?: string): Promise<FileMetadata[]> {
         try {
+            let query = `'${folderId}' in parents and (mimeType='image/jpeg' or mimeType='image/png' or mimeType='image/webp' or mimeType='application/pdf') and trashed=false`;
+            
+            if (startDate) {
+                query += ` and createdTime >= '${startDate}'`;
+            }
+            if (endDate) {
+                query += ` and createdTime <= '${endDate}'`;
+            }
+
             const response = await this.drive.files.list({
-                q: `'${folderId}' in parents and (mimeType='image/jpeg' or mimeType='image/png' or mimeType='image/webp' or mimeType='application/pdf') and trashed=false`,
-                fields: 'files(id, name, mimeType)',
-                pageSize: 100,
-                key: this.apiKey, // Explicitly pass API key here
+                q: query,
+                fields: 'files(id, name, mimeType, createdTime, modifiedTime)',
+                pageSize: 1000,
+                orderBy: 'createdTime',
+                key: this.apiKey,
             });
 
             const files = response.data.files || [];
-            return files.map((file) => `https://drive.google.com/file/d/${file.id}/view`);
+            return files.map((file) => ({
+                id: file.id!,
+                name: file.name || 'Untitled',
+                mimeType: file.mimeType || 'application/octet-stream',
+                createdTime: file.createdTime || undefined,
+                modifiedTime: file.modifiedTime || undefined,
+                link: `https://drive.google.com/file/d/${file.id}/view`,
+            }));
         } catch (error: unknown) {
             if (typeof error === 'object' && error !== null && 'code' in error && (error as any).code === 404 || (error instanceof Error && error.message.includes('File not found'))) {
                 throw new Error("Folder not found. Make sure it's shared with 'Anyone with the link'");

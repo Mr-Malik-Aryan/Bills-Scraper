@@ -3,7 +3,7 @@ import { DriveService } from '@/lib/drive-service';
 
 export async function POST(request: Request) {
     try {
-        const { folderLink } = await request.json();
+        const { folderLink, startDate, endDate } = await request.json();
 
         if (!folderLink) {
             return NextResponse.json(
@@ -22,12 +22,12 @@ export async function POST(request: Request) {
             );
         }
 
-        const fileLinks = await driveService.listFilesInFolder(folderId);
+        const files = await driveService.listFilesInFolder(folderId, startDate, endDate);
 
         return NextResponse.json({
             success: true,
-            fileLinks,
-            count: fileLinks.length,
+            files,
+            count: files.length,
         });
     } catch (error: unknown) {
         console.error('Scan folder error:', error);

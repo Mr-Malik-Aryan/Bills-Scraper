@@ -3,13 +3,13 @@ import { generateExcel, generateExcelFromCsv } from '@/lib/excel-generator';
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { csv, bills } = body;
+        const { csv, bills, columns } = body;
 
         let buffer: Buffer;
         if (typeof csv === 'string' && csv.trim().length > 0) {
             buffer = await generateExcelFromCsv(csv);
         } else if (Array.isArray(bills) && bills.length > 0) {
-            buffer = await generateExcel(bills);
+            buffer = await generateExcel(bills, columns);
         } else {
             return new Response('No CSV or bills to export', { status: 400 });
         }
