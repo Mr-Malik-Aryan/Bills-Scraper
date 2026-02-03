@@ -124,8 +124,6 @@ export default function Home() {
   };
 
   const processChunk = async (chunkLinks: string[], offset: number, total: number) => {
-
-  const processChunk = async (chunkLinks: string[], offset: number, total: number) => {
     try {
       const response = await fetch('/api/extract', {
         method: 'POST',
